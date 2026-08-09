@@ -1,23 +1,25 @@
 # Changelog
 
-## [0.1.0-beta] - 2026-08-08
+All notable changes to `vid2gif` will be documented in this file.
+
+## [0.3.0] - 2026-08-09
 
 ### Added
-- Single-pass `filter_complex` palette generation (replaces earlier two-pass
-  file-based palette approach).
-- `-d` flag for configurable dither algorithm (default `sierra2_4a`).
-- `-n` dry-run flag to print the ffmpeg/gifsicle commands without executing.
-- `-v` verbose flag to surface ffmpeg's own progress output.
-- `-V` version flag.
-- Input validation: readable-file check, positive-integer checks on `-f`/`-w`,
-  output extension warning, overwrite warning.
-- `set -euo pipefail` and `die`/`log` helpers for consistent error handling.
+- Single-pass `ffmpeg` filtergraph using `split`, `palettegen`, `paletteuse`
+- Encoding presets via `-p`: `web`, `social`, `quality`, `minimal`
+- Color control via `-m` (2-256 colors)
+- Loop count via `-l` (0 = infinite)
+- Dither algorithms: `bayer`, `floyd_steinberg`, `sierra2`, `sierra2_4a`, `sierra3`, `burkes`, `atkinson`, `none`
+- Dry-run mode (`-n`, `--dry-run`)
+- Human-readable file sizing via `numfmt`
 
 ### Changed
-- Compression now uses `gifsicle -O3 --batch` (in-place) instead of a
-  temp-file swap.
-- Output size reporting uses `numfmt` when available, falling back to `du -h`.
+- `-r` replaces `-f` for framerate (POSIX alignment)
+- Structured `log()` / `die()` error handling
+- In-memory filter graph (no temp palette files)
 
-### Notes
-- No external dependencies beyond `ffmpeg` (required) and `gifsicle`
-  (optional, `-c` only).
+### Removed
+- `vid2gif-1.sh`, `vid2gif-2.sh`, `README-3.md`, `vid2gif.pdf`
+
+## [0.1.0] - 2026-08-09
+- Initial release with two-stage palette generation
