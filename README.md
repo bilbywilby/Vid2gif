@@ -1,98 +1,77 @@
 # vid2gif
 
-A small, dependency-light Bash script for converting video files (or terminal
-screen recordings) into optimized animated GIFs using `ffmpeg`'s two-color-pass
-palette technique, done in a single ffmpeg invocation.
+POSIX-compliant Bash script for converting video containers to optimized animated GIFs using `ffmpeg` and optional `gifsicle`.
 
-> **Status:** beta (`v0.1.0-beta`). Interface may still change before v1.0.0.
+## Features
 
-## Why
+- **Single-Pass Filtergraph**: Palettes generated in memory, no disk I/O
+- **Dither Control**: 8 spatial dither algorithms supported
+- **Preset Profiles**: `web`, `social`, `quality`, `minimal`
+- **Dry-Run Inspection**: Preview execution commands with `-n`
+- **Zero Temp Files**: No residual filesystem artifacts
 
-`ffmpeg`'s default GIF encoder is limited to a global 256-color palette and
-tends to produce banding/dithering artifacts on text-heavy or high-detail
-footage. This script generates a custom palette per-clip and applies it with
-configurable dithering, producing noticeably cleaner output — especially for
-terminal recordings — without needing extra Python/Node tooling.
+## Dependencies
 
-## Requirements
-
-- `ffmpeg` (required)
-- `gifsicle` (optional, only needed for `-c` compression)
-
-No other dependencies.
-
-## Install
-
-```bash
-git clone https://github.com/<you>/vid2gif.git
-cd vid2gif
-chmod +x vid2gif.sh
-# optionally symlink onto your PATH
-ln -s "$(pwd)/vid2gif.sh" /usr/local/bin/vid2gif
-```
+| Tool | Required? | Purpose |
+|------|-----------|---------|
+| `ffmpeg` | Yes | Core conversion engine |
+| `gifsicle` | No | Post-processing optimization (`-O`) |
 
 ## Usage
+I see the issue — the heredoc content is getting truncated in the terminal. Let me provide a cleaner solution using smaller chunks:Solution: Write Documentation in Smaller Chunkscd ~/pixel-terminal-master/Vid2gif
 
-```
-vid2gif.sh -i input.mp4 [-o output.gif] [-f fps] [-w width]
-           [-s start] [-t duration] [-d dither] [-c] [-n] [-v] [-h] [-V]
-```
+# 1. Clean up backup file first
+rm -f vid2gif.sh.backup
 
-| Flag | Meaning | Default |
-|------|---------|---------|
-| `-i` | Input video file (required) | — |
-| `-o` | Output GIF path | `<input_basename>.gif` |
-| `-f` | Frames per second | `15` |
-| `-w` | Output width in px (height auto-scaled) | `800` |
-| `-s` | Start time (`00:00:05` or `5`) | none |
-| `-t` | Duration to encode | full remaining clip |
-| `-d` | Dither algorithm for `paletteuse` | `sierra2_4a` |
-| `-c` | Compress output with `gifsicle -O3` | off |
-| `-n` | Dry run — print the ffmpeg command, don't execute | off |
-| `-v` | Verbose ffmpeg output | off |
-| `-V` | Print version and exit | — |
-| `-h` | Show help | — |
+# 2. Write CHANGELOG.md in one chunk (smaller)
+cat > CHANGELOG.md << 'ENDCHANGELOG'
+# Changelog
 
-### Examples
+All notable changes to `vid2gif` will be documented in this file.
 
-Basic conversion:
+## [0.3.0] - 2026-08-09
 
-```bash
-./vid2gif.sh -i demo.mp4
-```
+### Added
+- Single-pass `ffmpeg` filtergraph using `split`, `palettegen`, `paletteuse`
+- Encoding presets via `-p`: `web`, `social`, `quality`, `minimal`
+- Color control via `-m` (2-256 colors)
+- Loop count via `-l` (0 = infinite)
+- Dither algorithms: `bayer`, `floyd_steinberg`, `sierra2`, `sierra2_4a`, `sierra3`, `burkes`, `atkinson`, `none`
+- Dry-run mode (`-n`, `--dry-run`)
+- Human-readable file sizing via `numfmt`
 
-Trim to an 8-second clip starting at 3s, 900px wide, 12fps, compressed:
+### Changed
+- `-r` replaces `-f` for framerate (POSIX alignment)
+- Structured `log()` / `die()` error handling
+- In-memory filter graph (no temp palette files)
 
-```bash
-./vid2gif.sh -i demo.mp4 -o demo.gif -f 12 -w 900 -s 3 -t 8 -c
-```
+### Removed
+- `vid2gif-1.sh`, `vid2gif-2.sh`, `README-3.md`, `vid2gif.pdf`
 
-Preview the ffmpeg command without running it:
+## [0.1.0] - 2026-08-09
+- Initial release with two-stage palette generation
+ENDCHANGELOG
 
-```bash
-./vid2gif.sh -i demo.mp4 -n
-```
+# 3. Write README.md in two parts
+cat > README.md << 'ENDREADME'
+# vid2gif
 
-## How it works
+POSIX-compliant Bash script for converting video containers to optimized animated GIFs using `ffmpeg` and optional `gifsicle`.
 
-The script builds a single `ffmpeg` `filter_complex` graph that:
+## Features
 
-1. Applies `fps`/`scale` to the input stream.
-2. Splits the stream into two copies.
-3. Runs `palettegen` on one copy to build an optimal 256-color palette for
-   that specific clip.
-4. Runs `paletteuse` on the other copy against that palette, with a
-   configurable dither algorithm.
+- **Single-Pass Filtergraph**: Palettes generated in memory, no disk I/O
+- **Dither Control**: 8 spatial dither algorithms supported
+- **Preset Profiles**: `web`, `social`, `quality`, `minimal`
+- **Dry-Run Inspection**: Preview execution commands with `-n`
+- **Zero Temp Files**: No residual filesystem artifacts
 
-This avoids writing an intermediate palette PNG to disk and keeps everything
-in one process.
+## Dependencies
 
-## License
+| Tool | Required? | Purpose |
+|------|-----------|---------|
+| `ffmpeg` | Yes | Core conversion engine |
+| `gifsicle` | No | Post-processing optimization (`-O`) |
 
-MIT — see [LICENSE](LICENSE).
-
-## Contributing
-
-Issues and PRs welcome. This is a beta release; please report edge cases
-around unusual input codecs, container formats, or filter option interactions.
-
+## Usagebash
+./vid2gif.sh -i <input_video> [OPTIONS]
