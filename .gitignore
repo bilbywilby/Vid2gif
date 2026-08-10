@@ -1,0 +1,28 @@
+# Build artifacts
+__pycache__/
+*.py[cod]
+dist/
+build/
+*.egg-info/
+
+# Logs and test outputs
+*.log
+*.gif
+*.mp4
+*.png
+
+# Environment
+.env
+.venv/
+.env/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

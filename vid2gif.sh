@@ -1,270 +1,241 @@
 #!/usr/bin/env bash
+# vid2gif.sh — convert video to an optimized GIF using ffmpeg's two-pass
+# palette technique (palettegen + paletteuse).
+#
+# Usage:
+#   vid2gif.sh -i input.mp4 -o output.gif [options]
+#
+# Options:
+#   -i FILE       Input video (required)
+#   -o FILE       Output GIF (default: <input>.gif)
+#   -Q METHOD     Palette quantization method: octree (default) | mediancut | bayer
+#   -F FPS        Output frame rate (default: 15)
+#   -W WIDTH      Output width in px, height auto-scaled (default: source width)
+#   -R BYTES      Target size in bytes; degrades quality/scale in steps to hit it
+#   -T            Preserve transparency (alpha channel passthrough)
+#   -S            Strip metadata from the output GIF
+#   -C            Auto-crop letterbox/pillarbox bars before conversion
+#   -B SECONDS    Benchmark smoke-test mode: run a quick preset sweep capped
+#                 at SECONDS of wall time and print timing/size results
+#   -h            Show this help text
+#
+# Exit codes: 0 success, 1 bad usage, 2 ffmpeg failure, 3 target size unreachable
+
 set -euo pipefail
 
-readonly VERSION="0.3.0"
-readonly SCRIPT_NAME=$(basename "$0")
-
-declare INPUT=""
-declare OUTPUT=""
-declare FPS=15
-declare WIDTH=480
-declare MAX_COLORS=256
-declare LOOP_COUNT=0
-declare DITHER="sierra2_4a"
-declare START_TIME=""
-declare DURATION=""
-declare DRY_RUN=0
-declare OPTIMIZE=0
-declare VERBOSE=0
-declare PRESET=""
-
-readonly ALLOWED_DITHERS=("bayer" "floyd_steinberg" "sierra2" "sierra2_4a" "sierra3" "burkes" "atkinson" "none")
-
-log_debug() { [[ $VERBOSE -eq 1 ]] && echo "[DEBUG] $(date '+%H:%M:%S') $*" >&2 || true; }
-log_info() { echo "[INFO] $(date '+%H:%M:%S') $*" >&2; }
-log_warn() { echo "[WARN] $(date '+%H:%M:%S') $*" >&2; }
-log_error() { echo "[ERROR] $(date '+%H:%M:%S') $*" >&2; }
-die() { log_error "$@"; exit 1; }
+QUANT_METHOD="octree"
+FPS=15
+WIDTH=""
+TARGET_BYTES=""
+TRANSPARENCY=0
+STRIP_METADATA=0
+AUTO_CROP=0
+BENCH_SECONDS=""
+INPUT=""
+OUTPUT=""
 
 usage() {
-    cat <<EOF
-${SCRIPT_NAME} v${VERSION} - Convert video files to optimized GIFs
-
-USAGE: ${SCRIPT_NAME} -i <input_video> [OPTIONS]
-
-REQUIRED:
-    -i <file>        Input video path
-
-OPTIONS:
-    -o <file>        Output GIF path (default: input_basename.gif)
-    -s <time>        Start time (HH:MM:SS, MM:SS, or seconds)
-    -t <time>        Duration (same formats)
-    -r <fps>         Framerate (default: 15, range 1-60)
-    -w <width>       Target width in pixels (default: 480, min 64)
-    -m <colors>      Max colors 2-256 (default: 256)
-    -l <loops>       Loop count 0=infinite (default: 0)
-    -d <dither>      Dither: ${ALLOWED_DITHERS[*]} (default: sierra2_4a)
-    -p <preset>      Preset: web, social, quality, minimal
-    -O               Optimize with gifsicle if available
-    -v               Verbose/debug mode
-    -n, --dry-run    Display commands without executing
-    -h, --help       Show help
-
-EXAMPLES:
-    ${SCRIPT_NAME} -i video.mp4 -o animation.gif
-    ${SCRIPT_NAME} -i clip.mov -s 0:10 -t 5 -r 12 -w 640
-    ${SCRIPT_NAME} -i movie.mkv -p social -O -v
-EOF
+    sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
+    exit "${1:-0}"
 }
 
-time_to_seconds() {
-    local time_str="$1"
-    if [[ "$time_str" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
-        echo "$time_str"; return 0
-    fi
-    if [[ "$time_str" =~ ^([0-9]+):([0-5][0-9]):([0-5][0-9])(\.[0-9]+)?$ ]]; then
-        local h="${BASH_REMATCH[1]}" m="${BASH_REMATCH[2]}" s="${BASH_REMATCH[3]}"
-        echo "$h * 3600 + $m * 60 + $s" | bc -l; return 0
-    fi
-    if [[ "$time_str" =~ ^([0-5]?[0-9]):([0-5][0-9])(\.[0-9]+)?$ ]]; then
-        local m="${BASH_REMATCH[1]}" s="${BASH_REMATCH[2]}"
-        echo "$m * 60 + $s" | bc -l; return 0
-    fi
-    echo ""; return 1
+die() {
+    echo "vid2gif: error: $*" >&2
+    exit 2
 }
 
-apply_preset() {
-    case "$1" in
-        web)      WIDTH=640; FPS=12; MAX_COLORS=128; DITHER="floyd_steinberg" ;;
-        social)   WIDTH=480; FPS=10; MAX_COLORS=96;  DITHER="sierra2_4a" ;;
-        quality)  WIDTH=800; FPS=15; MAX_COLORS=256; DITHER="sierra2_4a" ;;
-        minimal)  WIDTH=320; FPS=8;  MAX_COLORS=64;  DITHER="atkinson" ;;
-        *) die "Unknown preset '$1'. Use: web, social, quality, minimal" ;;
+require_ffmpeg() {
+    command -v ffmpeg >/dev/null 2>&1 || die "ffmpeg not found on PATH"
+    command -v ffprobe >/dev/null 2>&1 || die "ffprobe not found on PATH"
+}
+
+while getopts ":i:o:Q:F:W:R:B:TSCh" opt; do
+    case "$opt" in
+        i) INPUT="$OPTARG" ;;
+        o) OUTPUT="$OPTARG" ;;
+        Q) QUANT_METHOD="$OPTARG" ;;
+        F) FPS="$OPTARG" ;;
+        W) WIDTH="$OPTARG" ;;
+        R) TARGET_BYTES="$OPTARG" ;;
+        B) BENCH_SECONDS="$OPTARG" ;;
+        T) TRANSPARENCY=1 ;;
+        S) STRIP_METADATA=1 ;;
+        C) AUTO_CROP=1 ;;
+        h) usage 0 ;;
+        \?) die "unknown option: -$OPTARG" ;;
+        :) die "option -$OPTARG requires an argument" ;;
     esac
-    log_debug "Preset '$1' applied"
-}
+done
 
-parse_args() {
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            -i) [[ -z "${2:-}" ]] && die "-i requires arg"; INPUT="$2"; shift 2 ;;
-            -o) [[ -z "${2:-}" ]] && die "-o requires arg"; OUTPUT="$2"; shift 2 ;;
-            -s) [[ -z "${2:-}" ]] && die "-s requires arg"; START_TIME="$2"; shift 2 ;;
-            -t) [[ -z "${2:-}" ]] && die "-t requires arg"; DURATION="$2"; shift 2 ;;
-            -r) [[ -z "${2:-}" ]] && die "-r requires arg"; FPS="$2"; shift 2 ;;
-            -w) [[ -z "${2:-}" ]] && die "-w requires arg"; WIDTH="$2"; shift 2 ;;
-            -m) [[ -z "${2:-}" ]] && die "-m requires arg"; MAX_COLORS="$2"; shift 2 ;;
-            -l) [[ -z "${2:-}" ]] && die "-l requires arg"; LOOP_COUNT="$2"; shift 2 ;;
-            -d) [[ -z "${2:-}" ]] && die "-d requires arg"; DITHER="$2"; shift 2 ;;
-            -p) [[ -z "${2:-}" ]] && die "-p requires arg"; apply_preset "$2"; shift 2 ;;
-            -O) OPTIMIZE=1; shift ;;
-            -v) VERBOSE=1; shift ;;
-            -n|--dry-run) DRY_RUN=1; shift ;;
-            -h|--help) usage; exit 0 ;;
-            *) die "Unknown option: $1. Run '$SCRIPT_NAME --help'" ;;
-        esac
+pick_input_file() {
+    # Streamlined media picker for interactive terminals, tried in order:
+    #   1. Termux:API native Android file picker (best UX, needs the
+    #      Termux:API companion app + `pkg install termux-api`)
+    #   2. fzf fuzzy browser over common video locations
+    #   3. plain numbered `select` menu (no extra dependencies)
+    if command -v termux-storage-get >/dev/null 2>&1; then
+        local dest="${TMPDIR:-/tmp}/vid2gif-picked-$$"
+        echo "vid2gif: opening Android file picker..." >&2
+        termux-storage-get "$dest" >/dev/null 2>&1 || true
+        if [[ -f "$dest" ]]; then
+            echo "$dest"
+            return 0
+        fi
+        echo "vid2gif: no file selected via picker, falling back" >&2
+    fi
+
+    local search_dirs=("$HOME" "$HOME/storage/shared" "$HOME/storage/dcim" "$HOME/storage/movies" "$PWD")
+    local -a existing_dirs=()
+    for d in "${search_dirs[@]}"; do
+        [[ -d "$d" ]] && existing_dirs+=("$d")
+    done
+    [[ ${#existing_dirs[@]} -gt 0 ]] || die "no searchable directories found; pass -i explicitly"
+
+    local -a candidates=()
+    while IFS= read -r -d '' f; do
+        candidates+=("$f")
+    done < <(find "${existing_dirs[@]}" -maxdepth 4 -type f \
+        \( -iname '*.mp4' -o -iname '*.mov' -o -iname '*.mkv' -o -iname '*.webm' -o -iname '*.avi' \) \
+        -print0 2>/dev/null | sort -z -u)
+
+    [[ ${#candidates[@]} -gt 0 ]] || die "no video files found under ${existing_dirs[*]}; pass -i explicitly"
+
+    if command -v fzf >/dev/null 2>&1; then
+        printf '%s\n' "${candidates[@]}" | fzf --prompt="vid2gif> select input: " --preview 'ffprobe -hide_banner "{}" 2>&1 | head -20'
+        return 0
+    fi
+
+    echo "Select input video:" >&2
+    local f
+    select f in "${candidates[@]}"; do
+        [[ -n "$f" ]] && { echo "$f"; return 0; }
+        echo "invalid selection, try again" >&2
     done
 }
 
-validate_inputs() {
-    [[ -z "$INPUT" ]] && { usage; die "Input file (-i) required."; }
-    [[ ! -f "$INPUT" ]] && die "Input not found: $INPUT"
-    [[ ! -s "$INPUT" ]] && die "Input empty: $INPUT"
-    
-    validate_dither "$DITHER"
-    [[ ! "$MAX_COLORS" =~ ^[0-9]+$ ]] && die "Invalid max colors: $MAX_COLORS"
-    (( MAX_COLORS < 2 || MAX_COLORS > 256 )) && die "Colors must be 2-256"
-    [[ ! "$LOOP_COUNT" =~ ^[0-9]+$ ]] && die "Invalid loop count: $LOOP_COUNT"
-    [[ ! "$FPS" =~ ^[0-9]+$ ]] && die "Invalid fps: $FPS"
-    (( FPS < 1 || FPS > 60 )) && die "Fps must be 1-60"
-    [[ ! "$WIDTH" =~ ^[0-9]+$ ]] && die "Invalid width: $WIDTH"
-    (( WIDTH < 64 )) && die "Width must be ≥64"
-}
-
-validate_dither() {
-    local mode="$1"
-    for d in "${ALLOWED_DITHERS[@]}"; do
-        [[ "$d" == "$mode" ]] && return 0
-    done
-    die "Invalid dither '$mode'. Valid: ${ALLOWED_DITHERS[*]}"
-}
-
-check_deps() {
-    command -v ffmpeg &>/dev/null || die "ffmpeg required but not found"
-    [[ $OPTIMIZE -eq 1 ]] && command -v gifsicle &>/dev/null && log_info "gifsicle found, will optimize"
-}
-
-calc_size() {
-    local bytes
-    bytes=$(wc -c < "$1" 2>/dev/null || stat -c%s "$1")
-    if (( bytes >= 1073741824 )); then
-        printf "%.2f GB" "$(echo "$bytes/1073741824" | bc -l)"
-    elif (( bytes >= 1048576 )); then
-        printf "%.2f MB" "$(echo "$bytes/1048576" | bc -l)"
-    elif (( bytes >= 1024 )); then
-        printf "%.2f KB" "$(echo "$bytes/1024" | bc -l)"
+if [[ -z "$INPUT" ]]; then
+    if [[ -t 0 && -z "$BENCH_SECONDS" ]]; then
+        INPUT="$(pick_input_file)"
+        [[ -n "$INPUT" ]] || die "no input selected"
     else
-        printf "%d B" "$bytes"
+        usage 1
+    fi
+fi
+
+[[ -f "$INPUT" ]] || die "input file not found: $INPUT"
+
+case "$QUANT_METHOD" in
+    octree|mediancut|bayer) ;;
+    *) die "invalid quant method: $QUANT_METHOD (expected octree|mediancut|bayer)" ;;
+esac
+
+case "$QUANT_METHOD" in
+    bayer)     DITHER_ALGO="bayer" ;;
+    mediancut) DITHER_ALGO="floyd_steinberg" ;;
+    octree)    DITHER_ALGO="sierra2_4a" ;;
+esac
+
+if [[ -z "$OUTPUT" ]]; then
+    OUTPUT="${INPUT%.*}.gif"
+fi
+
+require_ffmpeg
+
+build_filter() {
+    local width="$1"
+    local -a chain=()
+    if [[ "$AUTO_CROP" -eq 1 ]]; then
+        chain+=("cropdetect=24:16:0")
+    fi
+    chain+=("fps=${FPS}")
+    if [[ -n "$width" ]]; then
+        chain+=("scale=${width}:-1:flags=lanczos")
+    fi
+    local IFS=,
+    echo "${chain[*]}"
+}
+
+convert_once() {
+    local width="$1" out="$2"
+    local filters palette
+    filters="$(build_filter "$width")"
+    palette="$(mktemp -t vid2gif-palette-XXXXXX.png)"
+    trap 'rm -f "$palette"' RETURN
+
+    local gen_extra=""
+    [[ "$TRANSPARENCY" -eq 1 ]] && gen_extra="reserve_transparent=1:"
+
+    ffmpeg -y -v error -i "$INPUT" \
+        -vf "${filters},palettegen=stats_mode=diff:${gen_extra}max_colors=256" \
+        "$palette" || die "palettegen pass failed"
+
+    local use_extra=""
+    [[ "$TRANSPARENCY" -eq 1 ]] && use_extra="alpha_threshold=128:"
+
+    ffmpeg -y -v error -i "$INPUT" -i "$palette" \
+        -lavfi "${filters}[x];[x][1:v]paletteuse=dither=${DITHER_ALGO}:${use_extra}diff_mode=rectangle" \
+        "$out" || die "paletteuse pass failed"
+
+    if [[ "$STRIP_METADATA" -eq 1 ]]; then
+        local stripped
+        stripped="$(mktemp -t vid2gif-strip-XXXXXX.gif)"
+        ffmpeg -y -v error -i "$out" -map_metadata -1 "$stripped" && mv "$stripped" "$out"
     fi
 }
 
-resolve_paths() {
-    if [[ -z "$OUTPUT" ]]; then
-        OUTPUT="${INPUT%.gif}.gif"
-    fi
-    local dir
-    dir=$(dirname "$OUTPUT")
-    [[ ! -d "$dir" ]] && mkdir -p "$dir" && log_info "Created directory: $dir"
-}
-
-temp_cleanup() {
-    for f in "${TEMP_FILES[@]:-}"; do
-        [[ -f "$f" ]] && rm -f "$f"
+run_benchmark() {
+    local deadline=$((SECONDS + BENCH_SECONDS))
+    local presets=("octree:480" "mediancut:480" "bayer:480" "octree:320")
+    echo "config,size_bytes,time_ms"
+    for preset in "${presets[@]}"; do
+        [[ $SECONDS -ge $deadline ]] && break
+        local q="${preset%%:*}" w="${preset##*:}"
+        local tmp start end
+        tmp="$(mktemp -t vid2gif-bench-XXXXXX.gif)"
+        start=$(date +%s%3N)
+        QUANT_METHOD="$q" convert_once "$w" "$tmp" || { rm -f "$tmp"; continue; }
+        end=$(date +%s%3N)
+        echo "${q}_${w}px,$(stat -c%s "$tmp"),$((end - start))"
+        rm -f "$tmp"
     done
 }
 
-check_bounds() {
-    local start="$1" dur="$2" total="$3"
-    [[ -z "$total" || "$total" == "N/A" ]] && return 0
-    
-    if [[ -n "$start" ]]; then
-        (( $(echo "$start >= $total" | bc -l) )) && warn "Start ($start s) > duration ($total s)"
-    fi
-    if [[ -n "$start" && -n "$dur" ]]; then
-        local end
-        end=$(echo "$start + $dur" | bc -l)
-        (( $(echo "$end > $total" | bc -l) )) && warn "Segment ends beyond video duration"
-    fi
+# Degrade quality/scale in three steps to hit a target byte size:
+#   1. original width, chosen quant method
+#   2. reduced width (75%), same quant method
+#   3. reduced width (50%) + faster quant method (mediancut) + reduced fps
+try_hit_target_size() {
+    local base_width="$1"
+    local attempt_widths=("$base_width" "$((base_width * 3 / 4))" "$((base_width / 2))")
+    local i=0
+    for w in "${attempt_widths[@]}"; do
+        i=$((i + 1))
+        if [[ "$i" -eq 3 ]]; then
+            QUANT_METHOD="mediancut"
+            FPS=$((FPS > 10 ? 10 : FPS))
+        fi
+        convert_once "$w" "$OUTPUT"
+        local size
+        size=$(stat -c%s "$OUTPUT")
+        if [[ "$size" -le "$TARGET_BYTES" ]]; then
+            echo "vid2gif: hit target size on attempt $i: ${size} bytes <= ${TARGET_BYTES}" >&2
+            return 0
+        fi
+    done
+    echo "vid2gif: warning: could not reach target size after 3 attempts (last: ${size} bytes)" >&2
+    return 3
 }
 
-run_palette() {
-    local filter="fps=${FPS},scale=${WIDTH}:-1:flags=lanczos,palettegen=max_colors=${MAX_COLORS}"
-    local args=()
-    [[ -n "$START_TIME" ]] && args+=("-ss" "$START_TIME")
-    [[ -n "$DURATION" ]] && args+=("-t" "$DURATION")
-    
-    log_info "Generating palette..."
-    ffmpeg -y -hide_banner -loglevel error "${args[@]}" -i "$INPUT" -vf "$filter" "$PALETTE_FILE" 2>&1 || die "Palette generation failed"
-    log_info "Palette complete: $PALETTE_FILE"
-}
+if [[ -n "$BENCH_SECONDS" ]]; then
+    run_benchmark
+    exit 0
+fi
 
-run_convert() {
-    local filter="fps=${FPS},scale=${WIDTH}:-1:flags=lanczos[x];[x][1:v]paletteuse=dither=${DITHER}"
-    local args=()
-    [[ -n "$START_TIME" ]] && args+=("-ss" "$START_TIME")
-    [[ -n "$DURATION" ]] && args+=("-t" "$DURATION")
-    
-    log_info "Synthesizing GIF..."
-    ffmpeg -y -hide_banner -loglevel error "${args[@]}" -i "$INPUT" -i "$PALETTE_FILE" -filter_complex "$filter" -loop "$LOOP_COUNT" "$OUTPUT" 2>&1 || die "GIF synthesis failed"
-}
+if [[ -n "$TARGET_BYTES" ]]; then
+    src_width="${WIDTH:-$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of csv=p=0 "$INPUT")}"
+    try_hit_target_size "$src_width"
+else
+    convert_once "$WIDTH" "$OUTPUT"
+fi
 
-run_optimize() {
-    command -v gifsicle &>/dev/null || { warn "gifsicle not found, skipping optimization"; return 0; }
-    
-    log_info "Optimizing with gifsicle..."
-    gifsicle --batch -O3 --loopcount="$LOOP_COUNT" "$OUTPUT" 2>&1 || warn "Optimization failed, output preserved"
-}
-
-show_dry_run() {
-    local base=()
-    [[ -n "$START_TIME" ]] && base+=("-ss" "$START_TIME")
-    [[ -n "$DURATION" ]] && base+=("-t" "$DURATION")
-    
-    echo ""
-    echo "=== DRY RUN ==="
-    echo ""
-    echo "Palette: ffmpeg -y -hide_banner -loglevel error ${base[*]} -i '$INPUT' -vf '...' '$PALETTE_FILE'"
-    echo "Convert: ffmpeg -y -hide_banner -loglevel error ${base[*]} -i '$INPUT' -i '$PALETTE_FILE' -filter_complex '...' -loop $LOOP_COUNT '$OUTPUT'"
-    [[ $OPTIMIZE -eq 1 ]] && echo "Optimize: gifsicle --batch -O3 --loopcount=$LOOP_COUNT '$OUTPUT'"
-    echo ""
-    echo "Settings: ${WIDTH}px | ${FPS}fps | $MAX_COLORS colors | dither=$DITHER"
-    [[ -n "$START_TIME" ]] && echo "Segment: $START_TIME (+${DURATION:-full})"
-    echo ""
-}
-
-# --- Main ---
-
-main() {
-    TEMP_FILES=()
-    trap temp_cleanup EXIT
-    
-    parse_args "$@"
-    [[ -n "$PRESET" ]] || true  # apply_preset already called in parse_args
-    
-    validate_inputs
-    check_deps
-    
-    PALETTE_FILE=$(mktemp "/tmp/vid2gif_palette_XXXXXX.png")
-    TEMP_FILES+=("$PALETTE_FILE")
-    
-    resolve_paths
-    
-    local start_sec="" dur_sec="" vid_dur=""
-    [[ -n "$START_TIME" ]] && start_sec=$(time_to_seconds "$START_TIME") || true
-    [[ -n "$DURATION" ]] && dur_sec=$(time_to_seconds "$DURATION") || true
-    
-    if command -v ffprobe &>/dev/null; then
-        vid_dur=$(ffprobe -v error -show_entries format=duration -of default=noprintwrappers=1:nokey=1 "$INPUT" 2>/dev/null || echo "")
-        check_bounds "$start_sec" "$dur_sec" "$vid_dur"
-    fi
-    
-    log_info "=== VID2GIF v${VERSION} ==="
-    log_info "Input:  $INPUT ($(calc_size "$INPUT"))"
-    log_info "Output: $OUTPUT"
-    log_info "Config: ${WIDTH}px | ${FPS}fps | $MAX_COLORS colors | dither=$DITHER"
-    
-    if [[ $DRY_RUN -eq 1 ]]; then
-        show_dry_run
-        exit 0
-    fi
-    
-    run_palette
-    run_convert
-    
-    [[ $OPTIMIZE -eq 1 ]] && run_optimize
-    
-    log_info "=== COMPLETE ==="
-    log_info "Output: $OUTPUT ($(calc_size "$OUTPUT"))"
-}
-
-main "$@"
+echo "vid2gif: wrote $OUTPUT"

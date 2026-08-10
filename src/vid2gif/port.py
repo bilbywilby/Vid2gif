@@ -1,0 +1,339 @@
+#!/usr/bin/env python3
+"""
+vid2gif v0.3.0 - Video to GIF Converter
+
+A Python library and CLI tool for converting video files to optimized animated GIFs
+using FFmpeg with single-pass palette generation.
+
+Usage:
+    vid2gif.py -i <input_video> [OPTIONS]
+    from vid2gif import Vid2GifConverter, convert_video_to_gif
+
+Requirements:
+    - ffmpeg binary on PATH
+    - Optional: gifsicle for optimization
+"""
+
+import argparse
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Optional, List, Dict, Any, Tuple
+
+__version__ = "0.3.0"
+__author__ = "bilbywilby"
+__license__ = "MIT"
+
+# Preset configurations
+PRESETS: Dict[str, Dict[str, Any]] = {
+    "web": {"width": 480, "fps": 12, "max_colors": 128, "dither": "floyd_steinberg"},
+    "social": {"width": 480, "fps": 10, "max_colors": 96, "dither": "sierra2_4a"},
+    "quality": {"width": 800, "fps": 15, "max_colors": 256, "dither": "sierra2_4a"},
+    "minimal": {"width": 320, "fps": 8, "max_colors": 64, "dither": "atkinson"},
+}
+
+VALID_DITHERS: List[str] = [
+    "bayer", "floyd_steinberg", "sierra2", "sierra2_4a",
+    "sierra3", "burkes", "atkinson", "none"
+]
+
+
+class Vid2GifError(Exception):
+    """Base exception for vid2gif errors."""
+    pass
+
+
+class FFmpegNotFoundError(Vid2GifError):
+    """Raised when ffmpeg is not found on PATH."""
+    pass
+
+
+class InputFileError(Vid2GifError):
+    """Raised when input file validation fails."""
+    pass
+
+
+class ConversionError(Vid2GifError):
+    """Raised when conversion fails."""
+    pass
+
+
+class OutputFileError(Vid2GifError):
+    """Raised when output file operations fail."""
+    pass
+
+
+class Vid2GifConverter:
+    """Main converter class for video to GIF conversion."""
+
+    def __init__(
+        self,
+        input_path: str,
+        output_path: Optional[str] = None,
+        width: int = 480,
+        fps: int = 15,
+        max_colors: int = 256,
+        loop_count: int = 0,
+        dither: str = "sierra2_4a",
+        start_time: Optional[str] = None,
+        duration: Optional[str] = None,
+        optimize: bool = False,
+        verbose: bool = False,
+        dry_run: bool = False,
+    ):
+        """Initialize converter with parameters.
+
+        Args:
+            input_path: Path to input video file
+            output_path: Path to output GIF file (optional, derived from input)
+            width: Target width in pixels (default: 480)
+            fps: Target framerate (default: 15)
+            max_colors: Maximum colors in palette (default: 256)
+            loop_count: GIF loop count, 0=infinite (default: 0)
+            dither: Dithering algorithm (default: sierra2_4a)
+            start_time: Start timestamp (HH:MM:SS or seconds)
+            duration: Duration limit (same formats as start_time)
+            optimize: Run gifsicle optimization after conversion
+            verbose: Enable verbose logging
+            dry_run: Print commands without executing
+        """
+        self.input_path = Path(input_path).resolve()
+        self.output_path = Path(output_path).resolve() if output_path else None
+        self.width = width
+        self.fps = fps
+        self.max_colors = max_colors
+        self.loop_count = loop_count
+        self.dither = dither
+        self.start_time = start_time
+        self.duration = duration
+        self.optimize = optimize
+        self.verbose = verbose
+        self.dry_run = dry_run
+        
+        # Set default output name if not provided
+        if self.output_path is None:
+            self.output_path = self.input_path.with_suffix(".gif")
+
+    def validate(self) -> None:
+        """Validate all inputs before conversion."""
+        # Check ffmpeg availability
+        if not self._ffmpeg_available():
+            raise FFmpegNotFoundError("ffmpeg binary not found on PATH. Install with: sudo apt install ffmpeg")
+
+        # Check input file
+        if not self.input_path.exists():
+            raise InputFileError(f"Input file does not exist: {self.input_path}")
+        if not self.input_path.is_file():
+            raise InputFileError(f"Input path is not a file: {self.input_path}")
+        if self.input_path.stat().st_size == 0:
+            raise InputFileError(f"Input file is empty: {self.input_path}")
+
+        # Validate output directory
+        output_dir = self.output_path.parent
+        if not output_dir.exists():
+            raise OutputFileError(f"Output directory does not exist: {output_dir}")
+
+        # Validate parameters
+        if not (64 <= self.width <= 3840):
+            raise ValueError(f"Width must be between 64 and 3840, got {self.width}")
+        if not (1 <= self.fps <= 60):
+            raise ValueError(f"Framerate must be between 1 and 60, got {self.fps}")
+        if not (2 <= self.max_colors <= 256):
+            raise ValueError(f"Colors must be between 2 and 256, got {self.max_colors}")
+        if self.dither not in VALID_DITHERS:
+            raise ValueError(f"Invalid dither: {self.dither}. Valid options: {', '.join(VALID_DITHERS)}")
+        if self.loop_count < 0:
+            raise ValueError(f"Loop count must be non-negative, got {self.loop_count}")
+
+    def _ffmpeg_available(self) -> bool:
+        """Check if ffmpeg is    def _ffmpeg_available(self) -> bool:
+        """Check if ffmpeg is available on the system PATH."""
+        try:
+            result = subprocess.run(
+                ["ffmpeg", "-version"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False
+            )
+            return result.returncode == 0
+        except FileNotFoundError:
+            return false
+
+    def _gifsicle_available(self) -> bool:
+        """Check if gifsicle is available on the system PATH."""
+        try:
+            result = subprocess.run(
+                ["gifsicle", "--version"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                check=False
+            )
+            return result.returncode == 0
+        except FileNotFoundError:
+            return False
+
+    def convert(self) -> Path:
+        """Execute the video to GIF conversion process."""
+        self.validate()
+
+        if self.verbose:
+            print(f"Input: {self.input_path}")
+            print(f"Output: {self.output_path}")
+            print(f"Parameters: width={self.width}, fps={self.fps}, colors={self.max_colors}, dither={self.dither}")
+
+        if self.dry_run:
+            print("[Dry Run] Conversion skipped.")
+            return self.output_path
+
+        # Use a temporary file for palette generation
+        with tempfile.TemporaryDirectory() as temp_dir:
+            palette_path = Path(temp_dir) / "palette.png"
+
+            # Step 1: Generate Palette
+            palette_cmd = self._build_palette_command(palette_path)
+            if self.verbose:
+                print(f"Running palette command: {' '.join(palette_cmd)}")
+
+            try:
+                subprocess.run(palette_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            except subprocess.CalledProcessError as e:
+                raise ConversionError(f"Palette generation failed: {e.stderr.decode('utf-8', errors='ignore')}")
+
+            # Step 2: Generate GIF using Palette
+            gif_cmd = self._build_gif_command(palette_path, self.output_path)
+            if self.verbose:
+                print(f"Running conversion command: {' '.join(gif_cmd)}")
+
+            try:
+                subprocess.run(gif_cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            except subprocess.CalledProcessError as e:
+                raise ConversionError(f"GIF generation failed: {e.stderr.decode('utf-8', errors='ignore')}")
+
+        # Step 3: Optional Optimization via Gifsicle
+        if self.optimize:
+            if self._gifsicle_available():
+                if self.verbose:
+                    print("Optimizing GIF with gifsicle...")
+                opt_cmd = ["gifsicle", "-O3", "--batch", str(self.output_path)]
+                subprocess.run(opt_cmd, check=False)
+            elif self.verbose:
+                print("Warning: optimization requested but 'gifsicle' not found on PATH. Skipping.")
+
+        return self.output_path
+
+    def _build_base_filters(self) -> str:
+        """Build the video filter string for scaling, framerate, and dithering."""
+        filters = []
+        if self.fps:
+            filters.append(f"fps={self.fps}")
+        if self.width:
+            filters.append(f"scale={self.width}:-2:flags=lanczos")
+        return ",".join(filters)
+
+    def _build_palette_command(self, palette_path: Path) -> List[str]:
+        """Construct the FFmpeg command to generate the optimal palette."""
+        cmd = ["ffmpeg", "-y"]
+        if self.start_time:
+            cmd.extend(["-ss", str(self.start_time)])
+        if self.duration:
+            cmd.extend( ["-t", str(self.duration)])
+
+        cmd.extend(["-i", str(self.input_path)])
+
+        base_filters = self._build_base_filters()vid2gif.py
+        palette_filter = f"{base_filters,palettegen=max_colors={self.max_colors}}" if base_filters else f"palettegen=max_colors={self.max_colors}"
+        # Clean up syntax representation for filters string construction
+        filter_str = f"{base_filters},palettegen=max_colors={self.max_colors}" if base_filters else f"palettegen=max_colors={self.max_colors}"
+
+        cmd.extend(["-vf", filter_str, str(palette_path)])
+        return cmd
+
+    def _build_gif_command(self, palette_path: Path, output_path: Path) -> List[str]:
+        """Construct the FFmpeg command to generate the final GIF using the palette."""
+        cmd = ["ffmpeg", "-y"]
+        if self.start_time:
+            cmd.extend(["-ss", str(self.start_time)])
+        if self.duration:
+            cmd.extend(["-t", str(self.duration)])
+
+        cmd.extend(["-i", str(self.input_path), "-i", str(palette_path)])
+
+        base_filters = self._build_base_filters()
+        filter_str = f"{base_filters}[x];[x][1:v]paletteuse=dither={self.dither}" if base_filters else f"[1:v]paletteuse=dither={self.dither}"
+
+        cmd.extend([
+            "-lavfi", filter_str,
+            "-loop", str(self.loop_count),
+            str(output_path)
+        ])
+        return cmd
+
+
+def convert_video_to_gif(
+    input_path: str,
+    output_path: Optional[str] = None,
+    **kwargs: Any
+) -> Path:
+    """Helper function to convert a video to GIF programmatically."""
+    converter = Vid2GifConverter(input_path=input_path, output_path=output_path, **kwargs)
+    return converter.convert()
+
+
+def main() -> None:
+    """CLI entrypoint."""
+    parser = argparse.ArgumentParser(
+        description="Convert video files to optimized animated GIFs using FFmpeg."
+    )
+    parser.add_argument("-i", "--input", required=True, help="Path to input video file")
+    parser.add_argument("-o", "--output", help="Path to output GIF file")
+    parser.add_argument("-w", "--width", type=int, default=480, help="Target width in pixels (default: 480)")
+    parser.add_argument("-f", "--fps", type=int, default=15, help="Target framerate (default: 15)")
+    parser.add_argument("-c", "--colors", type=int, default=256, help="Max colors in palette [2-256] (default: 256)")
+    parser.add_argument("-l", "--loop", type=int, default=0, help="Loop count, 0=infinite (default: 0)")
+    parser.add_argument("-d", "--dither", default="sierra2_4a", choices=VALID_DITHERS, help="Dithering algorithm")
+    parser.add_argument("-s", "--start", help="Start timestamp (HH:MM:SS or seconds)")
+    parser.add_argument("-t", "--duration", help="Duration limit")
+    parser.add_argument("--preset", choices=list(PRESETS.keys()), help="Apply a configuration preset")
+    parser.add_argument("--optimize", action="store_true", help="Optimize output using gifsicle")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument("--dry-run", action="store_true", help="Print commands without running them")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+
+    args = parser.parse_args()
+
+    # Apply preset configurations if specified
+    config: Dict[str, Any] = {}
+    if args.preset:
+        config = PRESETS[args.preset]
+
+    try:
+        converter = Vid2GifConverter(
+            input_path=args.input,
+            output_path=args.output,
+            width=config.get("width", args.width),
+            fps=config.get("fps", args.fps),
+            max_colors=config.get("max_colors", args.colors),
+            loop_count=args.loop,
+            dither=config.get("dither", args.dither),
+            start_time=args.start,
+            duration=args.duration,
+            optimize=args.optimize,
+            verbose=args.verbose,
+            dry_run=args.dry_run,
+        )
+        out = converter.convert()
+        print(f"Successfully converted to: {out}")
+    except Vid2GifError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print("\nOperation cancelled by user.", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
