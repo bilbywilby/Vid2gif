@@ -1,0 +1,8 @@
+# Dev/test tools (pin to fixed versions for reproducibility)
+flake8==6.0.0
+black==23.9.1
+mypy==1.5.1
+
+# Test/runtime deps useful in CI
+pytest==7.4.0
+numpy==1.26.0
