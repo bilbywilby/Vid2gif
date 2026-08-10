@@ -148,7 +148,7 @@ class Vid2GifConverter:
             raise ValueError(f"Loop count must be non-negative, got {self.loop_count}")
 
     def _ffmpeg_available(self) -> bool:
-        """Check if ffmpeg is    def _ffmpeg_available(self) -> bool:
+def _ffmpeg_available(self) -> bool:
         """Check if ffmpeg is available on the system PATH."""
         try:
             result = subprocess.run(
