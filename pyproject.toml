@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vid2gif"
-version = "0.1.0"
+version = "0.4.0b1"
 description = "Convert video files to optimized animated GIFs using FFmpeg"
 readme = "README.md"
 license = {file = "LICENSE"}

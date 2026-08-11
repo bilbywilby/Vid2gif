@@ -59,6 +59,11 @@ class ConversionError(Vid2GifError):
     """Raised when conversion fails."""
     pass
 
+class OutputFileError(Vid2GifError):
+    """Raised when output file operations fail."""
+
+class TargetSizeUnreachableError(Vid2GifError):
+    """Raised when target size limit not reached within constraints."""
 
 class OutputFileError(Vid2GifError):
     """Raised when output file operations fail."""
@@ -244,7 +249,7 @@ class Vid2GifConverter:
         cmd.extend(["-i", str(self.input_path)])
 
         base_filters = self._build_base_filters()
-        palette_filter = f"{base_filters,palettegen=max_colors={self.max_colors}}" if base_filters else f"palettegen=max_colors={self.max_colors}"
+        palette_filter = f"{base_filters},palettegen=max_colors={self.max_colors}" if base_filters else f"palettegen=max_colors={self.max_colors}"
         # Clean up syntax representation for filters string construction
         filter_str = f"{base_filters},palettegen=max_colors={self.max_colors}" if base_filters else f"palettegen=max_colors={self.max_colors}"
 
