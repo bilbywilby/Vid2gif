@@ -21,3 +21,4 @@ POSIX-compliant Bash script for converting video containers to optimized animate
 ./vid2gif.sh -i <input_video> [OPTIONS]
 # CI Test
 # Updated
+# Verified
