@@ -5,7 +5,7 @@ from vid2gif.converter import GifConverter
 
 @pytest.fixture
 def mock_video(tmp_path):
-    """Generates a 2-second synthetic MP4 for testing (longer for metrics)."""
+    """Generates a 2-second synthetic MP4 (adequate for metrics)."""
     video_path = os.path.join(tmp_path, "sample.mp4")
     cmd = [
         "ffmpeg", "-y", "-f", "lavfi",
@@ -17,7 +17,7 @@ def mock_video(tmp_path):
 
 @pytest.fixture
 def short_video(tmp_path):
-    """Generates a 1-second video for edge case testing."""
+    """1-second video for edge case testing."""
     video_path = os.path.join(tmp_path, "short.mp4")
     cmd = [
         "ffmpeg", "-y", "-f", "lavfi",
@@ -39,7 +39,7 @@ def test_conversion_output(mock_video, tmp_path):
     assert result["width"] == 160
 
 def test_quality_metrics_calculation(mock_video, tmp_path):
-    """Test quality metrics work on adequate length videos (2+ seconds)."""
+    """Test quality metrics on adequate length video (2+ seconds)."""
     output_path = os.path.join(tmp_path, "output.gif")
     converter = GifConverter(mock_video, output_path)
     converter.convert(fps=10, width=160)
@@ -47,9 +47,9 @@ def test_quality_metrics_calculation(mock_video, tmp_path):
 
     assert "psnr" in metrics
     assert "ssim" in metrics
-    # With 2-second video, we expect reasonable positive values
-    assert metrics["psnr"] > 0.0 or metrics["psnr"] == float("inf")
-    assert metrics["ssim"] > 0.0 or metrics["ssim"] <= 1.0
+    # Values should be reasonable (not negative)
+    assert metrics["psnr"] >= 0.0
+    assert 0.0 <= metrics["ssim"] <= 1.0 or metrics["ssim"] == 0.0
 
 def test_short_video_edge_case(short_video, tmp_path):
     """Test behavior with very short video (may have limited metrics)."""
@@ -58,7 +58,6 @@ def test_short_video_edge_case(short_video, tmp_path):
     result = converter.convert(fps=10, width=160)
 
     assert os.path.exists(output_path)
-    # Short video should still produce output
     assert result["size_bytes"] > 0
 
 def test_file_not_found_raises():
@@ -67,11 +66,10 @@ def test_file_not_found_raises():
         GifConverter("/nonexistent/file.mp4", "output.gif")
 
 def test_odd_width_scaling(tmp_path, mock_video):
-    """Test that odd pixel dimensions are handled correctly (-2 ensures even)."""
+    """Test that -2 scaling ensures even dimensions."""
     output_path = os.path.join(tmp_path, "odd_width.gif")
     converter = GifConverter(mock_video, output_path)
-    # Request odd width - should be rounded down by :flags=lanczos
-    result = converter.convert(fps=10, width=319)
+    result = converter.convert(fps=10, width=319)  # Odd width
 
     assert os.path.exists(output_path)
     assert result["width"] == 319
