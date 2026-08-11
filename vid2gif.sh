@@ -209,7 +209,7 @@ convert_two_pass() {
 
     filters="$(build_filter "$width")"
     palette="$(make_temp_file ".png")"
-    trap 'rm -f "${palette:-}' RETURN
+    trap 'rm -f "${palette:-}"' RETURN
 
     palette_esc="${palette//:/\\:}"
 
