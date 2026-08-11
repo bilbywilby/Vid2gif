@@ -9,12 +9,8 @@ description = "Video-to-GIF converter utilizing two-pass FFmpeg palette generati
 readme = "README.md"
 requires-python = ">=3.8"
 license = {text = "MIT"}
-authors = [
-    {name = "Anthony Dee"}
-]
-dependencies = [
-    "click>=8.0.0",
-]
+authors = [{name = "Anthony Dee"}]
+dependencies = []
 
 [project.optional-dependencies]
 dev = [

@@ -1,24 +1,41 @@
 # vid2gif
 
-POSIX-compliant Bash script for converting video containers to optimized animated GIFs using `ffmpeg` and optional `gifsicle`.
+Video-to-GIF converter utilizing two-pass FFmpeg palette generation and SSIM/PSNR benchmarking.
+
+## Installation bash pip install vid2gif
+
+
+## Usage
+
+### Command Line
+
+Basic:
+
+bash vid2gif input.mp4 -o output.gif
+
+
+With benchmarking:
+
+bash vid2gif input.mp4 -o output.gif --fps 20 --width 600 --benchmark
+
+
+### Python API
+
+python from vid2gif.converter import GifConverter
+
+converter = GifConverter("input.mp4", "output.gif") result = converter.convert(fps=15, width=480) print(f"Generated in {result['elapsed_seconds']}s")
+
+metrics = converter.compute_quality_metrics() print(f"PSNR: {metrics['psnr']} dB | SSIM: {metrics['ssim']}")
+
 
 ## Features
 
-- **Single-Pass Filtergraph**: Palettes generated in memory, no disk I/O
-- **Dither Control**: 8 spatial dither algorithms supported
-- **Preset Profiles**: `web`, `social`, `quality`, `minimal`
-- **Dry-Run Inspection**: Preview execution commands with `-n`
-- **Zero Temp Files**: No residual filesystem artifacts
+- Two-pass palette generation for optimal colors
+- Configurable FPS and resolution (`-2` scaling ensures even dimensions)
+- PSNR/SSIM quality metrics (dimension-mismatch safe via `scale2ref`)
+- Clean CLI interface
+- Reproducible Docker benchmarking environments
 
-## Dependencies
+## License
 
-| Tool | Required? | Purpose |
-|------|-----------|---------|
-| `ffmpeg` | Yes | Core conversion engine |
-| `gifsicle` | No | Post-processing optimization (`-O`) |
-
-## Usagebash
-./vid2gif.sh -i <input_video> [OPTIONS]
-# CI Test
-# Updated
-# Verified
+MIT
