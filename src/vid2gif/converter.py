@@ -243,7 +243,7 @@ class Vid2GifConverter:
 
         cmd.extend(["-i", str(self.input_path)])
 
-        base_filters = self._build_base_filters()vid2gif.py
+        base_filters = self._build_base_filters()
         palette_filter = f"{base_filters,palettegen=max_colors={self.max_colors}}" if base_filters else f"palettegen=max_colors={self.max_colors}"
         # Clean up syntax representation for filters string construction
         filter_str = f"{base_filters},palettegen=max_colors={self.max_colors}" if base_filters else f"palettegen=max_colors={self.max_colors}"
