@@ -14,7 +14,7 @@ dependencies = [
 ]
 
 [project.scripts]
-vid2gif = "vid2gif.port:main"
+vid2gif = "vid2gif.converter:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
