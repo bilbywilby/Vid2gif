@@ -4,8 +4,8 @@ import sys
 sys.path.insert(0, os.path.abspath("../src"))
 
 project = "vid2gif"
-copyright = "2026, Anthony Dee"
-author = "Anthony Dee"
+copyright = "2026, bilbywilby"
+author = "bilbywilby"
 release = "0.5.1"
 
 extensions = [
