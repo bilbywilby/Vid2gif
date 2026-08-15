@@ -65,9 +65,19 @@ class GifConverter:
         ]
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+        size_bytes = os.path.getsize(self.config.output_path) if os.path.exists(self.config.output_path) else 0
+
+        result = {
+            "output_path": self.config.output_path,
+            "size_bytes": size_bytes,
+            "width": width,
+            "fps": fps
+        }
+
         if benchmark:
-            return self.compute_quality_metrics()
-        return None
+            result.update(self.compute_quality_metrics())
+
+        return result
 
     def _parse_metric(self, log_output: str, pattern: str) -> float:
         match = re.search(pattern, log_output)
