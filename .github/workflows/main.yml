@@ -92,12 +92,8 @@ jobs:
       - name: Smoke test - Generate sample GIF
         run: |
           ffmpeg -f lavfi -i testsrc=duration=1:size=320x240:rate=10 -c:v libx264 test_input.mp4
-          if command -v vid2gif &> /dev/null; then
-            vid2gif test_input.mp4 -o test_output.gif || true
-          else
-            python src/vid2gif/port.py test_input.mp4 -o test_output.gif || true
-          fi
-          ls -lh test_input.mp4 test_output.gif 2>/dev/null || echo "Output generation skipped"
+          vid2gif test_input.mp4 -o test_output.gif
+          ls -lh test_input.mp4 test_output.gif
 
   docker-build:
     runs-on: ubuntu-latest
