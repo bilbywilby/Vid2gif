@@ -1,6 +1,18 @@
 import argparse
 import sys
-from vid2gif.converter import convert_video, ConversionConfig
+import vid2gif.converter as converter
+
+# Resolve conversion function and config class dynamically from module exports
+convert_fn = (
+    getattr(converter, "convert_video", None)
+    or getattr(converter, "convert", None)
+    or getattr(converter, "convert_video_to_gif", None)
+)
+config_cls = (
+    getattr(converter, "ConversionConfig", None)
+    or getattr(converter, "Config", None)
+    or getattr(converter, "GifConfig", None)
+)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -62,17 +74,30 @@ def main():
     if not output_file:
         output_file = f"{input_file.rsplit('.', 1)[0]}.gif"
 
-    config = ConversionConfig(
-        input_path=input_file,
-        output_path=output_file,
-        width=args.width,
-        fps=args.fps,
-        benchmark=args.benchmark,
-        optimize_palette=not args.no_palette
-    )
+    if convert_fn is None:
+        print("Error: No valid conversion function found in vid2gif.converter module.", file=sys.stderr)
+        sys.exit(1)
 
     try:
-        convert_video(config)
+        if config_cls:
+            cfg = config_cls(
+                input_path=input_file,
+                output_path=output_file,
+                width=args.width,
+                fps=args.fps,
+                benchmark=args.benchmark,
+                optimize_palette=not args.no_palette
+            )
+            convert_fn(cfg)
+        else:
+            convert_fn(
+                input_path=input_file,
+                output_path=output_file,
+                width=args.width,
+                fps=args.fps,
+                benchmark=args.benchmark,
+                optimize_palette=not args.no_palette
+            )
         print(f"Successfully generated: {output_file}")
     except Exception as e:
         print(f"Error converting video: {e}", file=sys.stderr)
