@@ -1,0 +1,33 @@
+name: Publish Release to PyPI
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  pypi-publish:
+    name: Build and Publish
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/vid2gif
+    permissions:
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build dependencies
+        run: python -m pip install build
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Publish to PyPI via Trusted Publisher
+        uses: pypa/gh-action-pypi-publish@release/v1
