@@ -2,7 +2,6 @@ import argparse
 import sys
 import vid2gif.converter as converter
 
-# Resolve conversion function and config class dynamically from module exports
 convert_fn = (
     getattr(converter, "convert_video", None)
     or getattr(converter, "convert", None)
@@ -14,11 +13,12 @@ config_cls = (
     or getattr(converter, "GifConfig", None)
 )
 
+
 def main():
     parser = argparse.ArgumentParser(
         description="Convert video files to optimized animated GIFs using FFmpeg."
     )
-    
+
     parser.add_argument(
         "positional_input",
         nargs="?",
@@ -102,6 +102,7 @@ def main():
     except Exception as e:
         print(f"Error converting video: {e}", file=sys.stderr)
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
