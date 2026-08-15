@@ -15,14 +15,39 @@ class ConversionConfig:
 
 
 class GifConverter:
-    def __init__(self, config: ConversionConfig):
-        self.config = config
+    def __init__(
+        self,
+        input_path=None,
+        output_path=None,
+        width: int = 480,
+        fps: int = 15,
+        benchmark: bool = False,
+        optimize_palette: bool = True,
+        config: ConversionConfig = None
+    ):
+        if isinstance(input_path, ConversionConfig):
+            self.config = input_path
+        elif config is not None:
+            self.config = config
+        else:
+            self.config = ConversionConfig(
+                input_path=input_path,
+                output_path=output_path,
+                width=width,
+                fps=fps,
+                benchmark=benchmark,
+                optimize_palette=optimize_palette
+            )
 
     def convert(self):
-        if not os.path.exists(self.config.input_path):
+        if not self.config.input_path or not os.path.exists(self.config.input_path):
             raise FileNotFoundError(f"Input file not found: {self.config.input_path}")
 
-        filter_complex = f"fps={self.config.fps},scale={self.config.width}:-1:flags=lanczos"
+        target_width = self.config.width
+        if target_width % 2 != 0:
+            target_width -= 1
+
+        filter_complex = f"fps={self.config.fps},scale={target_width}:-2:flags=lanczos"
         if self.config.optimize_palette:
             filter_complex += " [x]; [x] split [a][b]; [a] palettegen [p]; [b][p] paletteuse"
 
@@ -52,6 +77,6 @@ class GifConverter:
         return {"psnr": psnr, "ssim": ssim}
 
 
-def convert_video(config: ConversionConfig):
-    converter = GifConverter(config)
+def convert_video(input_path=None, output_path=None, **kwargs):
+    converter = GifConverter(input_path, output_path, **kwargs)
     return converter.convert()
