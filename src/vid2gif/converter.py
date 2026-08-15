@@ -39,16 +39,24 @@ class GifConverter:
                 optimize_palette=optimize_palette
             )
 
-    def convert(self):
+        if self.config.input_path and not os.path.exists(self.config.input_path):
+            raise FileNotFoundError(f"Input file not found: {self.config.input_path}")
+
+    def convert(self, **kwargs):
+        fps = kwargs.get("fps", self.config.fps)
+        width = kwargs.get("width", self.config.width)
+        benchmark = kwargs.get("benchmark", self.config.benchmark)
+        optimize_palette = kwargs.get("optimize_palette", self.config.optimize_palette)
+
         if not self.config.input_path or not os.path.exists(self.config.input_path):
             raise FileNotFoundError(f"Input file not found: {self.config.input_path}")
 
-        target_width = self.config.width
+        target_width = width
         if target_width % 2 != 0:
             target_width -= 1
 
-        filter_complex = f"fps={self.config.fps},scale={target_width}:-2:flags=lanczos"
-        if self.config.optimize_palette:
+        filter_complex = f"fps={fps},scale={target_width}:-2:flags=lanczos"
+        if optimize_palette:
             filter_complex += " [x]; [x] split [a][b]; [a] palettegen [p]; [b][p] paletteuse"
 
         cmd = [
@@ -57,7 +65,7 @@ class GifConverter:
         ]
         subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        if self.config.benchmark:
+        if benchmark:
             return self.compute_quality_metrics()
         return None
 
