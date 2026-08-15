@@ -2,6 +2,29 @@
 
 All notable changes to `vid2gif` will be documented in this file.
 
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [0.5.1] - 2026-08-15
+
+### Fixed
+- Stale `port.py` invocation in CI smoke test replaced with `vid2gif` CLI entry point.
+- Corrected author metadata and remote repository tracking to `bilbywilby/Vid2gif`.
+
+### Cleanup
+- Removed duplicate `.github/workflows/ci.yml` in favor of consolidated `main.yml`.
+- Purged stale shell backup files (`vid2gif.sh.backup`, `vid2gif.sh.fixed_backup`, `vid2gif.sh.v0.3.0.backup`).
+
+## [0.4.0b1] - 2026-08-11
+
+### Added
+- Native Python conversion pipeline (`converter.py`) utilizing `ConversionConfig` data structures.
+- Automated GIF quality metrics calculation and odd-width aspect ratio scaling handling.
+- `pyproject.toml` setup with direct CLI console script entry point.
+
+### Changed
+- Deprecated legacy shell-script wrapper (`vid2gif.sh`) in favor of unified Python module.
+
 ## [0.3.0] - 2026-08-09
 
 ### Added

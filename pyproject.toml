@@ -1,22 +1,33 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "vid2gif"
 version = "0.5.1"
-description = "Video-to-GIF converter utilizing two-pass FFmpeg palette generation and SSIM/PSNR benchmarking."
+authors = [
+  { name = "bilbywilby", email = "bilbywilby@users.noreply.github.com" },
+]
+description = "Convert video files to optimized animated GIFs using FFmpeg"
 readme = "README.md"
-requires-python = ">=3.8"
-license = {text = "MIT"}
-authors = [{name = "bilbywilby"}]
-dependencies = []
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "numpy>=1.22.0,<3.0.0",
+]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0.0",
+    "pytest>=7.4.0",
     "twine>=4.0.0",
-    "build>=0.10.0"
+    "build>=0.10.0",
+    "flake8>=6.0.0",
+    "black>=23.9.1",
+    "mypy>=1.5.1",
 ]
 
 [project.scripts]
@@ -24,4 +35,3 @@ vid2gif = "vid2gif.cli:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-python_files = "test_*.py"
